@@ -808,8 +808,17 @@ document.addEventListener("DOMContentLoaded", function () {
             zp: "physical_zip"
         };
 
+        function prefillValue(param, raw) {
+            if (!raw) return raw;
+            if (param === "em" && raw.includes("@")) {
+                const at = raw.indexOf("@");
+                return raw.slice(0, at).replace(/ /g, "+") + raw.slice(at);
+            }
+            return raw;
+        }
+
         Object.entries(prefillMap).forEach(([param, fieldName]) => {
-            const value = params.get(param);
+            const value = prefillValue(param, params.get(param));
             if (!value) return;
             const field = form.querySelector(`[name="${fieldName}"]`);
             if (field) {

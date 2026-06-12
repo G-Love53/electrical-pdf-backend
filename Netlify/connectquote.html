@@ -138,12 +138,22 @@ function formPayload() {
   return o;
 }
 
+function prefillValue(param, raw) {
+  if (!raw) return raw;
+  // Query strings decode + as space; restore + in email local part (e.g. demo+coterie@…)
+  if (param === "em" && raw.includes("@")) {
+    const at = raw.indexOf("@");
+    return raw.slice(0, at).replace(/ /g, "+") + raw.slice(at);
+  }
+  return raw;
+}
+
 function applyPrefill() {
   const p = new URLSearchParams(location.search);
   const map = { fn: "first_name", ln: "last_name", em: "contact_email", bn: "insured_name", ad: "premise_street", ct: "premise_city", st: "state", zp: "zip" };
   let count = 0;
   Object.entries(map).forEach(([param, id]) => {
-    const v = p.get(param);
+    const v = prefillValue(param, p.get(param));
     if (!v) return;
     const el = document.getElementById(id);
     if (el) { el.value = v; el.classList.add("prefilled"); count++; }
@@ -212,20 +222,21 @@ document.getElementById("pay-btn").addEventListener("click", async () => {
   }
   document.getElementById("pay-btn").disabled = true;
   try {
-    const pm = await stripe.createPaymentMethod({ type: "card", card: cardElement });
-    if (pm.error) throw new Error(pm.error.message);
+    // Coterie bind expects Stripe token (tok_…), matching /v1/tokens — not pm_…
+    const tokenResult = await stripe.createToken(cardElement);
+    if (tokenResult.error) throw new Error(tokenResult.error.message);
     const res = await fetch(API + "/api/coterie/bind", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         submission_public_id: session.submission_public_id,
         quote_id: session.quote_id,
-        stripe_payment_method_id: pm.paymentMethod.id,
+        stripe_token: tokenResult.token.id,
         payment_plan: "Annual",
       }),
     });
     const data = await res.json();
-    if (!data.ok) throw new Error(data.message || data.error || "Bind failed");
+    if (!data.ok) throw new Error(data.message || data.error || data.coterie?.errors?.[0] || "Bind failed");
     showSuccess(data.connect_url);
   } catch (err) {
     showErr(err.message || String(err));
